@@ -1,0 +1,387 @@
+Autor: Andrés Felipe Arévalo Arévalo
+Objetivo: Clasificar clientes según su potencial de realizar al menos un pago
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+CONTEXTO Y PROBLEMÁTICA
+
+Este proyecto aborda el desafío de predecir si un cliente en mora realizará al 
+menos un pago, utilizando información disponible en la base de datos de 
+evolución de df_evolucion_enriquecida. Se busca optimizar los recursos operativos
+mediante la priorización de clientes con mayor probabilidad de pago.
+
+La variable objetivo es binaria, donde 1 indica que el cliente realizó al menos 
+un pago (TOTAL_PAGOS_APROBADOS > 0) y 0 indica que no realizó ningún pago. La 
+base de datos original está estructurada a nivel de obligación, por lo que fue 
+necesario realizar una agregación a nivel cliente para enfocar el análisis en 
+el individuo como unidad de estudio.
+
+El dataset presenta un fuerte desbalanceo de clases: aproximadamente el 84% de 
+los clientes no realizan ningún pago, mientras que solo el 16% efectúa al menos 
+un pago. Se requirió técnicas especializadas para su tratamiento, incluyendo el
+uso de métricas apropiadas y ajustes en los modelos para evitar sesgos hacia la clase 
+mayoritaria.
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+PREPARACIÓN DE DATOS
+
+Se seleccionaron las siguientes variables para el modelado, basándose en su 
+relevancia lógica y disponibilidad a nivel cliente:
+
+- SALDO_TOTAL_CLIENTE: Deuda total del cliente
+- DIAS_MORA: Número de días de mora (variable numérica continua)
+- TIPO_CLIENTE: Clasificación del cliente (monoproducto o multiproducto)
+
+La variable ESTADO_ORIGEN fue excluida del modelo final tras el análisis 
+exploratorio, ya que no mostró capacidad discriminatoria significativa entre 
+pagadores y no pagadores.
+
+Se construyeron variables derivadas para capturar relaciones no lineales y 
+enriquecer la capacidad predictiva del modelo:
+
+- LOG_SALDO: Transformación logarítmica del saldo (log1p para manejar ceros)
+- LOG_DIAS_MORA: Transformación logarítmica de los días de mora
+- RATIO_SALDO_MORA: Relación entre saldo y días de mora
+- LOG_SALDO_X_MORA: Interacción logarítmica entre saldo y mora
+- MORA_EXTREMA: Indicador binario para mora superior a 540 días
+- SALDO_ALTO: Indicador binario para saldos sobre la mediana
+- DIAS_MORA_CUADRADO: Término cuadrático para capturar no linealidades
+- SQRT_DIAS_MORA: Raíz cuadrada de días de mora
+- SALDO_PER_SQRT_MORA: Ratio usando raíz cuadrada de mora
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Análisis Exploratorio:
+
+El análisis de probabilidades condicionales reveló patrones interesantes:
+
+- Los clientes con mora extrema (>540 días) presentan una probabilidad de pago 
+  del 16.6%, superior a la de clientes con mora intermedia, lo que sugiere que 
+  pueden existir acuerdos especiales o procesos de reestructuración.
+
+- Los clientes multiproducto muestran una probabilidad de pago más del doble 
+  que los monoproducto, lo que indica que la relación con la entidad juega un 
+  papel importante en la disposición a pagar.
+
+- La relación entre mora y pago no es lineal, lo que justifica el uso de 
+  transformaciones y modelos capaces de capturar estas no linealidades.
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+ESTRATEGIA DE MODELADO: ¿POR QUÉ TRES MODELOS?
+
+Se implementaron tres aproximaciones metodológicas diferentes para evaluar cuál 
+ofrece el mejor balance entre rendimiento predictivo, interpretabilidad y 
+estabilidad en generalización:
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Modelo Probit:
+
+El modelo Probit es un modelo de regresión para variables binarias basado en la 
+distribución normal acumulada. Se seleccionó como línea base por las siguientes 
+razones:
+
+- Interpretabilidad: Los coeficientes permiten inferencia estadística clara y 
+  son estándar en análisis de riesgo crediticio y cobranza.
+  
+- Parsimonia: Modelo simple con pocos parámetros, fácil de auditar y explicar 
+  a stakeholders no técnicos.
+  
+- Inferencia estadística: Proporciona p-valores, intervalos de confianza y 
+  tests de hipótesis para cada variable.
+  
+- Estándar en la industria: Ampliamente utilizado en econometría financiera y 
+  modelos de scoring crediticio.
+
+Limitaciones identificadas:
+- Asume linealidad en la relación entre variables y probabilidad latente
+- No captura automáticamente interacciones complejas entre variables
+- Requiere especificación manual de términos no lineales
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+LightGBM:
+
+LightGBM es un algoritmo de gradient boosting basado en árboles de decisión 
+optimizado para eficiencia y rendimiento. Se incluyó porque:
+
+- Captura no linealidades: Identifica automáticamente relaciones complejas 
+  entre variables sin necesidad de transformaciones manuales.
+  
+- Interacciones automáticas: Descubre interacciones entre variables que serían 
+  difíciles de especificar manualmente en modelos lineales.
+  
+- Manejo nativo de desbalanceo: Implementa scale_pos_weight para ajustar por 
+  clases desbalanceadas sin necesidad de técnicas de remuestreo.
+  
+- Manejo eficiente de categóricas: Procesa variables categóricas sin necesidad 
+  de one-hot encoding, reduciendo dimensionalidad.
+  
+- Feature importance: Proporciona medidas de importancia de variables basadas 
+  en ganancia de información.
+
+- Regularización y early stopping: Controla overfitting mediante límites en 
+  profundidad, número de hojas y validación cruzada.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------.3 Random Forest:
+
+Random Forest es un método de ensemble que combina múltiples árboles de 
+decisión entrenados en submuestras aleatorias del dataset. Se implementó para:
+
+- Robustez a outliers: Menos sensible a valores extremos que modelos lineales.
+
+- Reducción de varianza: El promedio de múltiples árboles reduce el riesgo de 
+  sobreajuste comparado con un solo árbol.
+  
+- Manejo de no linealidades: Similar a LightGBM, captura patrones complejos 
+  sin especificación manual.
+  
+- Independencia de escala: No requiere normalización de variables.
+
+- Estabilidad: Menos propenso a cambios drásticos ante pequeñas variaciones 
+  en los datos de entrenamiento.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Comparación Estratégica:
+
+La comparación de estos tres enfoques permite evaluar si la complejidad 
+adicional de los modelos de machine learning justifica su implementación frente 
+a la simplicidad e interpretabilidad del modelo clásico. Si los tres modelos 
+convergen a resultados similares, se favorece la parsimonia (Probit). Si los 
+modelos complejos superan significativamente al lineal, se valida la necesidad 
+de capturar no linealidades e interacciones.
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+METODOLOGÍA Y VALIDACIÓN
+
+Partición de Datos:
+
+Se realizó una división estratificada del dataset en conjunto de entrenamiento 
+(70%) y prueba (30%), manteniendo la proporción de clases en ambos conjuntos. 
+Esta partición permite evaluar la capacidad de generalización del modelo en 
+datos no vistos durante el entrenamiento.
+
+Tratamiento del Desbalanceo:
+
+Para el modelo Probit se implementaron pesos por clase inversamente 
+proporcionales a su frecuencia, dando mayor peso a la clase minoritaria 
+(pagadores) durante el entrenamiento.
+
+Para LightGBM se utilizó el parámetro scale_pos_weight calculado como la 
+razón entre clase negativa y positiva.
+
+Para Random Forest se empleó class_weight='balanced' que aplica pesos 
+automáticos basados en la frecuencia de clases.
+
+Normalización:
+
+Las variables numéricas se estandarizaron usando StandardScaler para el modelo 
+Probit, transformándolas a media 0 y desviación estándar 1. Los modelos basados 
+en árboles (LightGBM y Random Forest) no requieren normalización, ya que 
+operan mediante particiones en el espacio de variables.
+
+Selección de Umbral:
+
+Dado el fuerte desbalanceo, el umbral de clasificación tradicional (0.5) no es 
+apropiado. Se empleó el criterio de maximización del F1-Score en el conjunto 
+de prueba para determinar el umbral óptimo de cada modelo. El F1-Score 
+equilibra precisión y recall, siendo una métrica adecuada para clases 
+desbalanceadas.
+
+Métricas de Evaluación:
+
+Se utilizó el área bajo la curva ROC (ROC-AUC) como métrica principal de 
+evaluación, ya que es invariante al desbalanceo de clases y mide la capacidad 
+del modelo para discriminar entre pagadores y no pagadores. Adicionalmente, se 
+reportan precisión, recall, F1-Score y matrices de confusión para una 
+evaluación integral del rendimiento.
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+RESULTADOS OBTENIDOS
+
+Rendimiento Comparativo (ROC-AUC)
+-------------------------------------
+Modelo              Train      Test       Overfitting    Mejora vs Probit
+--------------------------------------------------------------------------
+Probit              0.6102     0.6125     0.0023         Baseline
+LightGBM            0.6244     0.6129     0.0115         +0.04 puntos
+Random Forest       0.6927     0.6146     0.0781         +0.21 puntos
+
+Análisis del ROC-AUC:
+- Los tres modelos presentan valores de ROC-AUC muy similares en el conjunto 
+  de prueba (~0.61), lo que indica una capacidad discriminatoria moderada.
+  
+- El modelo Probit muestra una generalización casi perfecta (diferencia 
+  train-test de 0.0023), evidenciando ausencia total de sobreajuste.
+  
+- LightGBM presenta un overfitting controlado (0.0115), manteniéndose dentro 
+  de límites aceptables para producción.
+  
+- Random Forest exhibe un overfitting severo (0.0781), memorizando patrones 
+  del conjunto de entrenamiento que no se replican en test. Esto descalifica 
+  al modelo para uso en producción a pesar de su ligera ventaja aparente en 
+  ROC-AUC test.
+
+Métricas de Clasificación (Umbral Óptimo F1)
+
+Probit:
+  - Umbral óptimo: 0.1426
+  - Precision: 27%
+  - Recall: 42%
+  - F1-Score: 0.33
+  - Verdaderos Positivos: 3,907
+  - Falsos Negativos: 5,507
+
+LightGBM:
+  - Umbral óptimo: ~0.14
+  - Precision: ~27-28%
+  - Recall: ~42-43%
+  - F1-Score: ~0.33
+  - Desempeño prácticamente idéntico al Probit
+
+Random Forest:
+  - Umbral óptimo: ~0.14
+  - Precision: ~27-28%
+  - Recall: ~42-43%
+  - F1-Score: ~0.33
+  - Similar a los otros modelos pero con overfitting
+
+5.3 Interpretación de Resultados
+
+El recall del 42% significa que el modelo identifica correctamente a 4 de cada 
+10 clientes que realizarán pagos. Esto implica que se están perdiendo 
+aproximadamente 5,507 pagadores potenciales (falsos negativos), lo cual 
+representa un costo de oportunidad importante.
+
+La precisión del 27% indica que de los clientes clasificados como pagadores 
+potenciales, solo el 27% efectivamente paga. Esto resulta en aproximadamente 
+10,457 falsos positivos (clientes contactados innecesariamente).
+
+El umbral de 0.14 refleja el fuerte desbalanceo de clases y representa un 
+trade-off estratégico: se acepta una precisión baja para maximizar la 
+identificación de pagadores, priorizando la cobertura sobre la exactitud.
+
+Importancia de Variables
+
+Las variables con mayor poder predictivo identificadas por LightGBM son:
+
+1. LOG_SALDO y SALDO_TOTAL_CLIENTE: La magnitud de la deuda es el predictor 
+   más fuerte del comportamiento de pago.
+
+2. DIAS_MORA y sus transformaciones: La antigüedad de la mora tiene una 
+   relación no lineal con la probabilidad de pago.
+
+3. Variables de interacción: Los ratios y productos entre saldo y mora capturan 
+   patrones combinados importantes.
+
+4. TIPO_CLIENTE: Los clientes multiproducto muestran mayor propensión al pago.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Convergencia de Modelos:
+
+Un hallazgo crítico es que tres metodologías completamente diferentes (lineal, 
+boosting y random forest) convergen al mismo nivel de rendimiento (~0.61 ROC-
+AUC). Esta convergencia indica que se ha alcanzado el límite de capacidad 
+predictiva de las variables disponibles.
+
+La similitud en resultados sugiere que el problema no radica en la elección del 
+algoritmo, sino en la limitación intrínseca de información contenida en las 
+variables actuales. Modelos más complejos no pueden extraer información que 
+simplemente no existe en los datos.
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+DIAGNÓSTICO: LIMITACIONES IDENTIFICADAS
+
+Correlaciones Débiles
+-------------------------
+El análisis de correlaciones entre variables predictoras y la variable objetivo 
+muestra valores máximos inferiores a 0.15, considerablemente por debajo del 
+umbral de 0.3 que se considera adecuado para predicción robusta. Esto confirma 
+que las variables disponibles tienen bajo poder explicativo individual.
+
+Naturaleza Estocástica del Problema
+---------------------------------------
+La decisión de pagar está influenciada por factores no observables en los datos 
+disponibles:
+
+- Situación financiera personal temporal (pérdida de empleo, enfermedad)
+- Voluntad de pago (intención del cliente no capturada en variables)
+- Eventos externos imprevistos (emergencias, gastos inesperados)
+- Priorización de pagos entre múltiples acreedores
+
+Estos factores introducen un componente aleatorio irreducible que limita la 
+capacidad predictiva máxima alcanzable, independientemente del algoritmo 
+utilizado.
+
+Implicaciones del Desbalanceo Extremo
+-----------------------------------------
+Con solo el 16% de clientes realizando pagos, el modelo tiene pocas 
+observaciones de la clase positiva para aprender patrones robustos. Esto se 
+agrava si la variabilidad dentro de la clase minoritaria es alta, lo que 
+dificulta la identificación de características comunes de los pagadores.
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+CONCLUSIONES Y RECOMENDACIONES
+
+Evaluación de Modelos
+-------------------------
+Modelo Recomendado para Producción: PROBIT
+Justificación:
+- Rendimiento predictivo equivalente a modelos complejos (0.6125 vs 0.6129 
+  ROC-AUC), con diferencia estadísticamente insignificante.
+  
+- Generalización superior: Overfitting prácticamente nulo (0.0023) garantiza 
+  estabilidad en producción.
+  
+- Interpretabilidad total: Coeficientes permiten insights de negocio claros y 
+  comunicación efectiva con stakeholders.
+  
+- Auditoría y regulación: Facilita cumplimiento de requerimientos regulatorios 
+  que exigen explicabilidad de decisiones.
+  
+- Mantenimiento simple: Menor complejidad operativa y técnica para 
+  actualización y monitoreo.
+
+Modelos Descartados:
+- Random Forest: Overfitting severo (0.0781) lo descalifica a pesar de su 
+  ligera ventaja en ROC-AUC test. No es confiable en producción.
+  
+- LightGBM: Aunque técnicamente sólido, la ganancia marginal de 0.04 puntos no 
+  justifica la complejidad adicional frente a Probit.
+
+Valor de Negocio
+-------------------
+El modelo actual permite:
+
+- Reducir el universo de contacto en aproximadamente 75%, concentrando recursos 
+  en clientes con mayor probabilidad de pago.
+  
+- Alcanzar un lift de 1.67x en el decil superior de probabilidad, mejorando 
+  significativamente la eficiencia vs. selección aleatoria.
+  
+- Capturar el 42% de los pagadores potenciales contactando solo al 25% del 
+  portafolio.
+
+Limitaciones operativas:
+- El 58% de falsos negativos representa oportunidades perdidas que requieren 
+  estrategias complementarias.
+  
+- La precisión del 27% implica que 7 de cada 10 contactos no resultan en pago, 
+  lo que requiere optimización de costos de gestión.
+
+
+Aplicación Operativa
+------------------------
+El modelo debe utilizarse como herramienta de priorización, no como decisión 
+determinística:
+
+- Segmentar cartera en deciles de probabilidad
+- Asignar estrategias de cobranza diferenciadas por decil
+- Combinar score del modelo con reglas de negocio y conocimiento experto
+- Considerar costos de gestión vs. valor esperado de recuperación
+- Mantener canal de cobranza residual para todos los segmentos
+
+

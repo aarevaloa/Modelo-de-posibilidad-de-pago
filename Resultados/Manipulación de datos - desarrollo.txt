@@ -1,0 +1,139 @@
+Manipulación de las bases de datos - Prueba Técnica – Casa de Cobranzas Beta
+Autor: Andrés Felipe Arévalo Arévalo
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Objetivo
+El objetivo de este ejercicio es integrar, depurar y transformar distintas fuentes de información relacionadas con las bases de datos EVOLUCION, PAGOS y TELEFONOS, con el fin de construir una base final consistente, estandarizada y lista para operación y análisis, cumpliendo reglas explícitas de negocio.
+
+El proceso incluye:
+- Limpieza y validación de datos
+- Corrección de inconsistencias de formato
+- Integración de múltiples fuentes
+- Construcción de variables operativas clave
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Estructura de los datos de entrada
+
+Se utilizan tres archivos principales:
+
+EVOLUCION.txt
+Contiene información de estado de la obligación, producto, saldo, días de mora y pago mínimo.
+
+PAGOS.txt
+Tabla transaccional con registros de pagos asociados a las obligaciones.
+
+TELEFONOS.txt
+Información de contacto de los clientes, con posibles registros múltiples por cliente.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Importación de datos y manejo de codificación
+
+El archivo EVOLUCION.txt presenta una mezcla de codificaciones, por lo que se utiliza latin1 para garantizar la lectura completa del archivo sin pérdida de información.
+Las demás bases se importan usando su separador correspondiente.
+
+Durante la importación:
+- Se normalizan los nombres de columnas
+- Se corrigen tipos de datos mal inferidos
+- Se valida la consistencia inicial de las variables
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Validación y corrección de tipos de datos
+
+Variables categóricas
+ESTADO CLIENTE se valida y se convierte directamente a tipo booleano.
+Se detectan y analizan valores erróneos mediante conversión temporal a string.
+
+Variables monetarias
+
+Las variables SALDO CAPITAL MES y PAGO_MINIMO presentaban símbolos monetarios y separadores de miles.
+Se validó su formato mediante expresiones regulares y posteriormente se normalizaron para convertirlas a tipo float.
+
+La variable PAGOS en la base PAGOS utilizaba coma como separador decimal, por lo que se normalizó antes de la conversión numérica.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Limpieza y estandarización de la variable producto
+
+Inicialmente se identificó:
+- Uso inconsistente de mayúsculas y minúsculas
+- Presencia de acentos
+- Errores tipográficos evidentes
+
+Las acciones realizadas fueron:
+- Conversión de todas las categorías a mayúsculas
+- Eliminación de acentos mediante normalización Unicode
+- Identificación de categorías con caracteres no esperados
+- Corrección de errores evidentes usando un diccionario de correspondencias
+
+No se unificaron categorías conceptualmente distintas (por ejemplo, TARJETA y TARJETA DE CREDITO) debido a la falta de información adicional.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Integración de EVOLUCION y PAGOS
+
+Las bases EVOLUCION y PAGOS solo comparten el número de obligación, pero en formatos distintos.
+
+Unificación del identificador
+Se creó una columna auxiliar OBLIGACION_ en EVOLUCION, conservando únicamente los caracteres numéricos del identificador original.
+
+Agregación de pagos
+
+Dado que PAGOS es una tabla transaccional con múltiples registros por obligación:
+- Se filtraron únicamente los pagos con ESTADO_PAGO = 'APROBADO'
+- Se agregaron los pagos por obligación (suma y conteo)
+- Se descartaron pagos NO APROBADOS, ya que no afectan saldo, riesgo ni comportamiento
+
+Esto permitió realizar una unión uno a uno, evitando duplicidad de registros.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Depuración y consolidación de teléfonos
+
+Se identificaron múltiples registros de teléfono por cliente, lo que generaba duplicaciones.
+
+Reglas aplicadas:
+- Se conservaron únicamente caracteres numéricos
+- Celulares: 10 dígitos, inician por 7 seguido de [0–5]
+- Teléfonos fijos: 7 dígitos, inician por [1–5]
+- Registros que no cumplen estas reglas se eliminaron
+
+Los teléfonos válidos se consolidaron en formato ancho:
+- TELEFONO_CELULAR
+- TELEFONO_FIJO
+
+Dejando una sola fila por cliente.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Construcción de variables adicionales
+
+8.1 TIPO_CLIENTE
+MONOPRODUCTO: un solo producto
+MULTIPRODUCTO: más de un producto
+
+8.2 ESTADO_ORIGEN
+CON_ACUERDO: el producto contiene la palabra ACUERDO
+SIN_ACUERDO: en caso contrario
+
+8.3 SALDO_TOTAL_CLIENTE
+Suma del SALDO CAPITAL MES de todas las obligaciones del cliente.
+
+8.4 RANGO_DIAS_MORA
+Clasificación de los días de mora en rangos definidos por negocio:
+AL DIA, MENOS 30, MENOS 60, MENOS 90, MENOS 120, MENOS 180, MENOS 360, MENOS 540, MAS DE 540
+
+8.5 RANGO_MORA_CLIENTE
+Peor (máximo) rango de mora observado entre todas las obligaciones del cliente.
+
+8.6 CUMPLE_PAGO_MINIMO
+CUMPLE TOTAL: pagos > pago mínimo
+CUMPLE PARCIAL: pagos ≥ 70% del pago mínimo
+NO CUMPLE: en caso contrario
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Exportación del resultado final
+
+Formato: .txt
+Separador: |
+Codificación: utf-8
+Sin índice
+
+Archivo final:
+Resultados/EVOLUCION_final.txt
